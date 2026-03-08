@@ -46,7 +46,7 @@ def get_weather(city="Bangkok"):
 @tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
 async def morning_weather():
     # เปลี่ยนเลขข้างล่างเป็น ID ห้องแชทของนายท่าน (คลิกขวาที่ห้อง > Copy ID)
-    CHANNEL_ID = 1480185482083176621 
+    CHANNEL_ID = 1299667544814391349 
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         weather = get_weather()
