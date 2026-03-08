@@ -7,7 +7,7 @@ from discord.ext import commands
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-# ใช้ Client ตัวใหม่ตามคำแนะนำใน Log
+# ตั้งค่า Client ด้วย Library ตัวใหม่
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """
@@ -23,23 +23,24 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user.name} - พร้อมรับใช้นายท่านน้ำมนต์แล้วค่ะ!')
+    # ข้อความนี้ยืนยันว่าบอทพร้อมทำงานแล้ว
+    print(f'Logged in as {bot.user.name} — พร้อมรับใช้นายท่านน้ำมนต์แล้วค่ะ!')
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
-    # ตอบเมื่อโดน Tag หรือ DM
+    # ตอบเมื่อโดน Tag
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
         user_input = message.content.replace(f'<@{bot.user.id}>', '').strip()
         
         try:
-            # ใช้โมเดล gemini-2.0-flash ตัวล่าสุด
+            # ใช้โมเดล gemini-2.0-flash ล่าสุด
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 config={'system_instruction': SYSTEM_PROMPT},
-                contents=f"User ({message.author.name}): {user_input}"
+                contents=user_input
             )
             await message.reply(response.text)
         except Exception as e:
