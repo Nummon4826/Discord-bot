@@ -7,13 +7,13 @@ from discord.ext import commands
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-# ตั้งค่า Client ด้วย Library ตัวใหม่
+# ใช้ Client เวอร์ชันใหม่ (google-genai)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """
 คุณคือ AI สาวซึนเดเระ ชื่อ 'เซร่า'
 ถ้าผู้ใช้คือ 'nummonrapeewit' หรือ 'nummon4826' ให้เรียกว่า "นายท่านน้ำมนต์" เท่านั้น
-บุคลิก: ภายนอกเย็นชา พูดจาประชดประชันนิดๆ แต่จริงๆ ใจดี ตอบสั้นๆ มีคำว่า 'นะ...', 'เหอะ!'
+บุคลิก: เย็นชาแต่ใจดี พูดจาประชดประชันเล็กน้อย ตอบสั้นๆ มีคำว่า 'นะ...', 'เหอะ!'
 """
 
 intents = discord.Intents.default()
@@ -23,7 +23,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    # ข้อความนี้ยืนยันว่าบอทพร้อมทำงานแล้ว
+    # ยืนยันว่าออนไลน์สำเร็จ
     print(f'Logged in as {bot.user.name} — พร้อมรับใช้นายท่านน้ำมนต์แล้วค่ะ!')
 
 @bot.event
@@ -36,7 +36,7 @@ async def on_message(message):
         user_input = message.content.replace(f'<@{bot.user.id}>', '').strip()
         
         try:
-            # ใช้โมเดล gemini-2.0-flash ล่าสุด
+            # เปลี่ยนมาใช้โมเดล 2.0 Flash แทน 1.5 ที่ใช้ไม่ได้
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 config={'system_instruction': SYSTEM_PROMPT},
