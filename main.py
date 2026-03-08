@@ -6,7 +6,7 @@ import requests
 from groq import Groq
 from discord.ext import commands, tasks
 
-# --- Setup ---
+# --- ตั้งค่า Config จาก Railway ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
@@ -14,7 +14,7 @@ WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 TIMEZONE = pytz.timezone('Asia/Bangkok')
 
-# ระบบความจำ (Memory) เก็บ 10 ข้อความล่าสุดต่อคน
+# ระบบความจำ (Memory) เก็บ 10 ข้อความล่าสุด
 user_memory = {}
 
 SYSTEM_PROMPT = """
@@ -27,49 +27,74 @@ SYSTEM_PROMPT = """
 4.ให้ความเคารพกับนายท่าน้ำมนต์ที่สุด
 """
 
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- ฟังก์ชันดึงสภาพอากาศ ---
+# --- ฟังก์ชันพยากรณ์อากาศแบบละเอียด ---
 def get_weather(city="Bangkok"):
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_KEY}&units=metric&lang=th"
         res = requests.get(url).json()
-        temp = res['main']['temp']
-        desc = res['weather'][0]['description']
-        return f"{temp}°C ({desc})"
+        
+        temp_current = res['main']['temp']
+        temp_max = res['main']['temp_max']
+        temp_min = res['main']['temp_min']
+        description = res['weather'][0]['description']
+        
+        rain_status = "วันนี้มีโอกาสเห็นฝนนะคะ เตรียมร่มด้วยล่ะ" if "ฝน" in description else "วันนี้ไม่มีฝนค่ะ"
+        
+        report = (
+            f"\n☁️ สภาพท้องฟ้า: {description}\n"
+            f"🌡️ อุณหภูมิตอนนี้: {temp_current}°C\n"
+            f"📈 สูงสุด: {temp_max}°C / 📉 ต่ำสุด: {temp_min}°C\n"
+            f"☔ {rain_status}"
+        )
+        return report
     except:
-        return "เช็คไม่ได้น่ะสิ! *จิ๊ปาก*"
+        return "เช็คสภาพอากาศไม่ได้น่ะสิ! *จิ๊ปาก* (ดูเหมือน API Key จะมีปัญหาหรือใส่ชื่อเมืองผิดนะคะ)"
 
-# --- งานอัตโนมัติ 06:00 น. ---
+# --- คำสั่งเช็คอากาศแบบกดเอง ---
+@bot.command(name="checkweather")
+async def checkweather(ctx):
+    weather_info = get_weather("Bangkok")
+    await ctx.reply(f"นี่คือสภาพอากาศที่ไปเช็คมาให้ค่ะ: {weather_info} ...ไม่ได้อยากทำให้นะ แต่นายท่านสั่งนี่นา! *สะบัดหน้าใส่*")
+
+# --- ระบบแจ้งเตือนอัตโนมัติ 06:00 น. ---
 @tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
 async def morning_weather():
-    # เปลี่ยนเลขข้างล่างเป็น ID ห้องแชทของนายท่าน (คลิกขวาที่ห้อง > Copy ID)
+    # --- สำคัญ: เปลี่ยนเลขข้างล่างนี้เป็น Channel ID ของนายท่าน ---
     CHANNEL_ID = 1299667544814391349 
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
-        weather = get_weather()
-        await channel.send(f"ตื่นได้แล้วค่ะ นายท่านน้ำมนต์! *เคาะประตูห้องรัวๆ* อากาศวันนี้คือ {weather} ...จะไปไหนก็ระวังตัวด้วยล่ะ ไม่ได้เป็นห่วงหรอกนะ! *สะบัดผม*")
+        weather = get_weather("Bangkok")
+        await channel.send(f"ตื่นได้แล้วค่ะ นายท่านน้ำมนต์! *เคาะประตูห้องรัวๆ* อากาศวันนี้คือ: {weather} \nไม่ได้เป็นห่วงหรอกนะ! แค่ไม่อยากให้ไปสายเฉยๆ! *สะบัดผม*")
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user.name}')
+    # ยืนยันสถานะออนไลน์
+    print(f'Logged in as {bot.user.name} — พร้อมรับใช้นายท่านน้ำมนต์แล้วค่ะ!')
     if not morning_weather.is_running():
         morning_weather.start()
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
+    
+    # อนุญาตให้ใช้คำสั่ง !checkweather ได้
+    await bot.process_commands(message)
 
+    # ตอบเมื่อโดน Tag หรือ DM
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
         user_id = message.author.id
         user_input = message.content.replace(f'<@{bot.user.id}>', '').strip()
 
-        # บันทึกความจำ
+        # บันทึกลง Memory
         if user_id not in user_memory: user_memory[user_id] = []
         user_memory[user_id].append({"role": "user", "content": user_input})
         
+        # ดึงประวัติ 10 ข้อความล่าสุดมาคุย
         history = [{"role": "system", "content": SYSTEM_PROMPT}] + user_memory[user_id][-10:]
 
         try:
@@ -81,7 +106,8 @@ async def on_message(message):
             user_memory[user_id].append({"role": "assistant", "content": response})
             await message.reply(response)
         except Exception as e:
+            # แจ้งเตือนกรณี API Key มีปัญหา
             print(f"Error: {e}")
-            await message.reply("*ลนลาน* มะ...มีปัญหาทางเทคนิคนิดหน่อย อย่ามองนะ! *ปิดหน้าจอ*")
+            await message.reply("*ลนลาน* ระบบรวนหมดแล้ว! อย่าจ้องจับผิดกันสิ! *ปิดหน้าจอหนี*")
 
 bot.run(DISCORD_TOKEN)
