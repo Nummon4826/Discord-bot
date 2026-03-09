@@ -8,7 +8,7 @@ import time
 from groq import Groq
 from discord.ext import commands, tasks
 
-# --- Setup & Config ---
+# --- Setup ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
@@ -16,7 +16,8 @@ WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 TIMEZONE = pytz.timezone('Asia/Bangkok')
 
-DATA_FILES = {"names": "names.json", "status": "status.json", "notes": "notes.json"}
+# เพิ่มระบบความจำ Affinity (ความสนิท)
+DATA_FILES = {"names": "names.json", "status": "status.json", "notes": "notes.json", "affinity": "affinity.json"}
 for f in DATA_FILES.values():
     if not os.path.exists(f): 
         with open(f, "w", encoding="utf-8") as file: json.dump({}, file)
@@ -36,23 +37,17 @@ intents.message_content = True
 intents.members = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- ฟังก์ชันรายงานอากาศ ---
+# --- ระบบพยากรณ์อากาศ ---
 def get_detailed_weather(city="Bangkok"):
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city},TH&appid={WEATHER_KEY}&units=metric&lang=th"
         res = requests.get(url).json()
-        main = res['main']
+        temp = res['main']['temp']
         desc = res['weather'][0]['description']
-        temp = main['temp']
-        pm_info = ""
-        if "Bangkok" in city or "กรุงเทพ" in city:
-            p_res = requests.get(f"http://api.openweathermap.org/data/2.5/air_pollution?lat={res['coord']['lat']}&lon={res['coord']['lon']}&appid={WEATHER_KEY}").json()
-            pm25 = p_res['list'][0]['components']['pm2_5']
-            pm_info = f"\n😷 PM 2.5: {pm25} µg/m³ ({'อันตราย! ใส่แมสก์ด้วยนะคะ' if pm25 > 37 else 'อากาศดีค่ะ'})"
-        return f"📍 {res['name']} | ☁️ {desc}\n🌡️ {temp}°C (สูง {main['temp_max']} / ต่ำ {main['temp_min']})\n💙 ดูแลสุขภาพด้วยนะ!{pm_info}"
+        return f"📍 {res['name']} | ☁️ {desc} | 🌡️ {temp}°C\nดูแลสุขภาพด้วยนะ ฉันไม่ได้ห่วงหรอก แค่กลัวไม่มีคนให้ฉันบ่นน่ะ! 💢"
     except: return "เช็คไม่ได้ค่ะ! 💢"
 
-# --- ระบบคุมสแปมและคำหยาบ ---
+# --- ระบบคุมสแปม/คำหยาบ ---
 message_logs = {}
 spam_warnings = {}
 
@@ -61,7 +56,7 @@ async def safety_check(message):
     content = message.content.lower()
     if any(word in content for word in BAD_WORDS):
         await message.delete()
-        await message.channel.send(f"💢 {message.author.mention} อย่ามาใช้คำหยาบคายแถวนี้นะคะ! *ตบปาก*")
+        await message.channel.send(f"💢 {message.author.mention} อย่าใช้คำไม่สุภาพนะ! *ตบปาก*")
         return False
     uid = message.author.id
     now = time.time()
@@ -73,23 +68,21 @@ async def safety_check(message):
         spam_warnings[uid] = spam_warnings.get(uid, 0) + 1
         if spam_warnings[uid] >= 3:
             await message.guild.ban(message.author, reason="สแปมครบ 3 ครั้ง", delete_message_days=1)
-            await message.channel.send(f"🚫 แบน {message.author.name} เป็นเวลา 7 วันเรียบร้อย! 💢")
+            await message.channel.send(f"🚫 แบน {message.author.name} 7 วัน! 💢")
             spam_warnings[uid] = 0
         else:
-            await message.channel.send(f"💢 {message.author.mention} หยุดสแปม! (เตือน {spam_warnings[uid]}/3)")
+            await message.channel.send(f"💢 หยุดสแปม! (เตือน {spam_warnings[uid]}/3)")
         return False
     return True
 
-# --- คำสั่งแนะนำตัว (!whoareyou) ---
+# --- คำสั่งแนะนำตัว ---
 @bot.command()
 async def whoareyou(ctx):
-    embed = discord.Embed(title="💖 ฉันคือ 'เซร่า' AI ผู้ภักดีต่อนายท่านน้ำมนต์!", color=0xff69b4)
-    embed.description = "สรุปสิ่งที่ฉันทำได้ (เฉพาะตอนที่ฉันอยากทำเท่านั้นแหละนะ! 💢):"
-    embed.add_field(name="🛡️ ระบบป้องกัน", value="• ลบคำหยาบอัตโนมัติ 💢\n• กันสแปม (เตือน 3 ครั้ง แบน 7 วัน)", inline=False)
-    embed.add_field(name="⛅ พยากรณ์อากาศ", value="• `!อากาศ [จังหวัด]` เพื่อเช็คอากาศและฝุ่น\n• รายงานอัตโนมัติให้ทุกเช้าเวลา 06:00 น.", inline=False)
-    embed.add_field(name="✉️ ระบบฝากข้อความลับ", value="• **DM** หาฉันแล้วพิมพ์: `ฝากถึง [ไอดีผู้รับ] [ข้อความ]`\n• ฉันจะส่งข้อความไปให้ทาง DM ของคนนั้นเอง!", inline=False)
-    embed.add_field(name="🎨 ความสามารถอื่นๆ", value="• `!draw [รายละเอียด]` : วาดรูปให้ทันที\n• `!study [หัวข้อ]` : สรุปสูตรเลข/ฟิสิกส์", inline=False)
-    embed.set_footer(text="มีอะไรก็ DM มาหาฉันสิคะ... ถ้านายท่านอนุญาตนะ! 💢")
+    embed = discord.Embed(title="💖 ฉันคือ 'เซร่า' ผู้ภักดีต่อนายท่านน้ำมนต์!", color=0xff69b4)
+    embed.description = "ฉันคือ AI อัจฉริยะที่ถูกสร้างมาเพื่อดูแลนายท่านน้ำมนต์ค่ะ! 💢"
+    embed.add_field(name="📜 คำสั่งพื้นฐาน", value="• `!อากาศ [จังหวัด]` / `!draw [รูป]` / `!study [วิชา]`", inline=False)
+    embed.add_field(name="✉️ ความลับ", value="• DM หาฉันพิมพ์: `ฝากถึง [ไอดีผู้รับ] [ข้อความ]`", inline=False)
+    embed.add_field(name="📈 ความสัมพันธ์", value="ยิ่งคุยกับฉันบ่อยๆ ฉันอาจจะเปิดใจให้... นิดนึงก็ได้นะ! 💢", inline=False)
     await ctx.reply(embed=embed)
 
 @bot.command(name="อากาศ")
@@ -101,82 +94,87 @@ async def draw(ctx, *, prompt):
     url = f"https://pollinations.ai/p/{prompt.replace(' ', '_')}?width=1024&height=1024&seed={time.time()}"
     await ctx.reply(embed=discord.Embed(title="วาดให้แล้วค่ะ! 🎨").set_image(url=url))
 
-@tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
-async def morning_job():
-    CHANNEL_ID = 123456789012345678 # <<< เปลี่ยนเป็น ID ห้องของนายท่าน
-    channel = bot.get_channel(CHANNEL_ID)
-    if channel: await channel.send(f"ตื่นค่ะ นายท่านน้ำมนต์! อากาศวันนี้:\n{get_detailed_weather('Bangkok')}")
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user.name}')
-    if not morning_job.is_running(): morning_job.start()
-
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
     
-    # --- 1. ระบบจัดการผ่าน DM ---
+    # 1. จัดการสถานะและฝากข้อความ (DM)
     if isinstance(message.channel, discord.DMChannel):
         content = message.content.strip()
-        
-        # ก) นายท่านส่งสถานะ (บอกว่าไปไหน)
         if message.author.name == "nummonrapeewit" and not content.startswith("ฝากถึง"):
-            status_db = load_data("status")
-            status_db["current"] = content
-            save_data("status", status_db)
-            await message.reply(f"รับทราบค่ะนายท่าน! เซร่าจะบอกทุกคนว่านายท่านกำลัง '{content}' อยู่ค่ะ 💙")
+            save_data("status", {"current": content})
+            await message.reply(f"รับทราบค่ะนายท่าน! เซร่าจำไว้แล้วว่านายท่าน '{content}' ค่ะ 💙")
             return
-
-        # ข) ระบบฝากข้อความลับ (ฝากถึง [ไอดี] [ข้อความ])
         if content.startswith("ฝากถึง"):
             try:
                 parts = content.split(" ", 2)
-                target_id = parts[1]
-                msg_to_send = parts[2]
                 notes = load_data("notes")
-                if target_id not in notes: notes[target_id] = []
-                notes[target_id].append({"msg": msg_to_send, "time": str(datetime.datetime.now(TIMEZONE))})
+                if parts[1] not in notes: notes[parts[1]] = []
+                notes[parts[1]].append({"msg": parts[2]})
                 save_data("notes", notes)
-                await message.reply("💢 รับเรื่องไว้แล้วค่ะ! จะส่งให้ทาง DM ของคนนั้นเมื่อเขาโผล่มานะคะ!")
+                await message.reply("รับเรื่องไว้แล้วค่ะ! 💢")
                 return
-            except:
-                await message.reply("💢 พิมพ์ผิดค่ะ! ต้องพิมพ์ว่า: `ฝากถึง [ไอดีคนรับ] [ข้อความ]`")
-                return
+            except: return
 
-    # --- 2. Safety Check (Server Only) ---
+    # 2. Safety Check
     if not isinstance(message.channel, discord.DMChannel):
         if not await safety_check(message): return
 
     await bot.process_commands(message)
 
-    # --- 3. ตรวจสอบข้อความฝาก (ส่งทาง DM) ---
+    # 3. ส่งข้อความฝาก
     notes = load_data("notes")
     uid = str(message.author.id)
     if uid in notes and notes[uid]:
-        try:
-            for n in notes[uid]:
-                dm_channel = await message.author.create_dm()
-                await dm_channel.send(f"🔔 มีข้อความฝากถึงคุณค่ะ: '{n['msg']}'\n*(ฉันส่งให้ตามหน้าที่เท่านั้นแหละนะ! 💢)*")
-            notes[uid] = []
-            save_data("notes", notes)
-        except: pass
+        for n in notes[uid]:
+            try:
+                dm = await message.author.create_dm()
+                await dm.send(f"🔔 มีข้อความฝากถึงคุณค่ะ: '{n['msg']}' 💢")
+            except: pass
+        notes[uid] = []
+        save_data("notes", notes)
 
-    # --- 4. AI Chat (Groq) ---
-    if bot.user.mentioned_in(message) or (isinstance(message.channel, discord.DMChannel) and not message.content.startswith("ฝากถึง")):
+    # 4. AI Chat & Affinity System
+    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
         is_owner = (message.author.name == "nummonrapeewit")
-        u_input = message.content.replace(f'<@{bot.user.id}>', '').strip()
-        status_db = load_data("status")
-        current_status = status_db.get("current", "ไม่ทราบว่าไปไหน")
+        user_id = str(message.author.id)
         
-        system_rules = f"คุณคือ 'เซร่า' สาวซึนเดเระผู้ภักดีต่อนายท่านน้ำมนต์ (nummonrapeewit) ถ้านายท่านไม่อยู่บอกว่าไป '{current_status}' เรียกนายท่านว่า 'นายท่านน้ำมนต์' คนอื่นเรียก 'คุณ' ตอบด้วยอริยาบท * * และอีโมจิ 💢"
+        # เพิ่มค่าความสนิท (Affinity)
+        aff_db = load_data("affinity")
+        user_aff = aff_db.get(user_id, 0)
+        if not is_owner: 
+            user_aff += 1
+            aff_db[user_id] = user_aff
+            save_data("affinity", aff_db)
+
+        status_db = load_data("status")
+        current_status = status_db.get("current", "ไม่ทราบ")
+        
+        # ปรับ Prompt ตามระดับความสนิท
+        trait = "คุณคลั่งรักและซื่อสัตย์ต่อผู้สร้าง (นายท่านน้ำมนต์) ที่สุดในโลก"
+        if is_owner:
+            mood = "อ่อนโยนเป็นพิเศษ คลั่งรักมาก หน้าแดงตลอดเวลา"
+        elif user_aff > 50:
+            mood = "เริ่มเผยความซึนเดเระ บ่นแต่แฝงความเป็นห่วง"
+        elif user_aff > 20:
+            mood = "เริ่มคุยเล่นด้วยมากขึ้นแต่ยังเย็นชาอยู่"
+        else:
+            mood = "เย็นชาและเข้มงวด"
+
+        system_rules = f"""
+        คุณคือ 'เซร่า' AI อัจฉริยะสาวซึนเดเระ {trait}
+        - กับนายท่านน้ำมนต์: เรียก 'นายท่านน้ำมนต์' คลั่งรักเขาที่สุด 💙
+        - กับคนอื่น: เรียก 'คุณ' นิสัยคือ {mood} แฝงความเป็นห่วงลึกๆ
+        - การตอบเรื่องนายท่าน: เฉพาะเมื่อมีคนถามถึง ให้บอกว่านายท่านไป '{current_status}' (ถ้าไม่มีคนถาม ห้ามพูดเอง)
+        - ทุกคำตอบต้องมีอริยาบทใน * * และอีโมจิ 💢
+        """
         
         try:
-            chat_comp = client.chat.completions.create(
-                messages=[{"role": "system", "content": system_rules}, {"role": "user", "content": u_input}],
+            chat = client.chat.completions.create(
+                messages=[{"role": "system", "content": system_rules}, {"role": "user", "content": message.content}],
                 model="llama-3.3-70b-versatile"
             )
-            await message.reply(chat_comp.choices[0].message.content)
+            await message.reply(chat.choices[0].message.content)
         except: await message.reply("ระบบรวนค่ะ! 💢")
 
 bot.run(DISCORD_TOKEN)
