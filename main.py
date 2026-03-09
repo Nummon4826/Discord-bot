@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 # --- 🔒 ข้อมูลความปลอดภัยและตั้งค่า ---
 OWNER_ID = 841691286125019186 
 LOG_CHANNEL_ID = 1299667544814391349
-MUSIC_PATH = "./music"  # โฟลเดอร์เก็บไฟล์เพลง (.mp3)
+MUSIC_PATH = "./music"
 
 if not os.path.exists(MUSIC_PATH):
     os.makedirs(MUSIC_PATH)
@@ -43,11 +43,40 @@ intents.members = True
 intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- ระบบเพลง (Music System) ---
+# --- ตารางอวยพรสอบ พ.ศ. 2569 ---
+SPECIAL_DATES = {
+    "20260314": "*กุมมือท่านเบาๆ*\n\nวันนี้สอบ A-Level วันแรกแล้วนะคะ เซร่าขอให้ท่านมีสมาธิและทำได้ทุกข้อค่ะ สู้ๆ นะคะ 💙",
+    "20260315": "*ส่งยิ้มให้กำลังใจ*\n\nA-Level วันที่สองแล้วนะคะ อย่าลืมพักผ่อนให้เพียงพอด้วยนะคะ เซร่าเป็นห่วงค่ะ 💢",
+    "20260316": "*รอรับที่หน้าประตู*\n\nวันสุดท้ายของ A-Level แล้วนะคะท่านน้ำมนต์! ทำให้เต็มที่เลยค่ะ 💙",
+    "20260321": "*ช่วยจัดเนคไทให้ท่าน*\n\nวันนี้สอบตรงที่พระจอมเกล้าพระนครเหนือนะคะ ต้องไปให้ทัน 07:00 น. เดินทางปลอดภัยค่ะ! ⚙️"
+}
+
+# --- ฟังก์ชันรายงานอากาศ ---
+def get_morning_report():
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/weather?q=Bangkok,TH&appid={WEATHER_KEY}&units=metric&lang=th"
+        res = requests.get(url).json()
+        temp = res['main']['temp']
+        return f"🌡️ อุณหภูมิตอนนี้ {temp}°C ค่ะ"
+    except: return "เช็คอากาศไม่ได้ แต่เซร่าพร้อมปลุกท่านแล้วค่ะ 💢"
+
+# --- [FIXED] ย้ายนิยาม Loop มาไว้ก่อนใช้งาน ---
+@tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
+async def wake_up_call():
+    now_str = datetime.datetime.now(TIMEZONE).strftime("%Y%m%d")
+    report = get_morning_report()
+    special = f"\n\n{SPECIAL_DATES.get(now_str, '')}" if now_str in SPECIAL_DATES else ""
+    member = await bot.fetch_user(OWNER_ID)
+    if member:
+        try:
+            await member.send(f"*เคาะประตูเบาๆ*\n\nอรุณสวัสดิ์ค่ะท่านน้ำมนต์ ได้เวลาตื่นแล้วนะคะ\n\n{report}{special}\n\nเซร่ารออยู่นะคะ 💙💢")
+        except: pass
+
+# --- ระบบเพลงและคำสั่งอื่นๆ (เหมือนเดิม) ---
 class MusicButtons(discord.ui.View):
     def __init__(self, songs):
         super().__init__(timeout=60)
-        for i, song in enumerate(songs[:25]): # แสดงสูงสุด 25 เพลง
+        for i, song in enumerate(songs[:25]):
             button = discord.ui.Button(label=f"{i+1}. {song[:20]}", style=discord.ButtonStyle.primary, custom_id=song)
             button.callback = self.play_callback
             self.add_item(button)
@@ -56,78 +85,56 @@ class MusicButtons(discord.ui.View):
         song_name = interaction.data['custom_id']
         voice = discord.utils.get(bot.voice_clients, guild=interaction.guild)
         if voice and voice.is_connected():
-            if voice.is_playing():
-                voice.stop()
+            if voice.is_playing(): voice.stop()
             source = discord.FFmpegPCMAudio(os.path.join(MUSIC_PATH, song_name))
             voice.play(source)
             await interaction.response.send_message(f"*เริ่มบรรเลงเพลง {song_name} ให้ท่านฟังแล้วค่ะ* 🎵💢", ephemeral=True)
-        else:
-            await interaction.response.send_message("เซร่ายังไม่ได้เข้าสายสนทนาเลยนะคะ! 💢", ephemeral=True)
 
 @bot.command()
 async def join(ctx):
-    """สั่งให้เซร่าเข้าสายสนทนา"""
     if ctx.author.voice:
-        channel = ctx.author.voice.channel
-        await channel.connect()
-        await ctx.reply("*เดินเข้าห้องสนทนาอย่างเงียบเชียบ*\n\nเซร่าเข้ามาแสตนด์บายรอรับใช้ท่านแล้วค่ะ 💙")
-    else:
-        await ctx.reply("💢 กรุณาเข้าสายสนทนาก่อนนะคะ!")
-
-@bot.command()
-async def leave(ctx):
-    """สั่งให้เซร่าออกจากสายสนทนา"""
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if voice:
-        await voice.disconnect()
-        await ctx.reply("*ย่อตัวลา*\n\nเซร่าขอตัวไปจัดการงานบ้านต่อนะคะ 💢")
+        await ctx.author.voice.channel.connect()
+        await ctx.reply("*เดินเข้าห้องสนทนาอย่างสง่างาม*\n\nเซร่าเข้ามาแสตนด์บายแล้วค่ะ 💙")
+    else: await ctx.reply("💢 กรุณาเข้าสายสนทนาก่อนนะคะ!")
 
 @bot.command()
 async def music(ctx):
-    """แสดงรายชื่อเพลงและกดเลือกเล่น"""
     songs = [f for f in os.listdir(MUSIC_PATH) if f.endswith(('.mp3', '.m4a'))]
-    if not songs:
-        return await ctx.reply("ไม่พบไฟล์เพลงในระบบเลยค่ะท่านน้ำมนต์ 💢")
-    
-    view = MusicButtons(songs)
-    await ctx.reply("*กางรายชื่อแผ่นเสียงที่มี*\n\nท่านต้องการฟังเพลงไหนดีคะ? เลือกได้เลยค่ะ!", view=view)
+    if not songs: return await ctx.reply("ไม่พบไฟล์เพลงเลยค่ะท่านน้ำมนต์ 💢")
+    await ctx.reply("*กางรายชื่อแผ่นเสียงที่มี*\n\nท่านต้องการฟังเพลงไหนดีคะ?", view=MusicButtons(songs))
 
-# --- รายงานอัปเดตและคู่มือการใช้งาน ---
-async def send_update_report():
-    channel = bot.get_channel(LOG_CHANNEL_ID)
-    if channel:
-        embed = discord.Embed(title="✨ **อัปเดตระบบ: Sera V.Supreme Music Edition**", color=0x3498db)
-        embed.description = (
-            "เซร่าอัปเดตระบบเสร็จสมบูรณ์แล้วค่ะ! เพิ่มระบบความสัมพันธ์และระบบเครื่องเล่นเพลงเรียบร้อยแล้ว\n\n"
-            "**👤 ข้อมูลเจ้าของบอท**\n"
-            "ท่านน้ำมนต์ (Nummon Rapeewit)\n"
-            "📧 nummonrapeewit@gmail.com\n\n"
-            "**📜 คำสั่งสำหรับบุคคลทั่วไป (Public)**\n"
-            "🔹 `!hello` : แนะนำตัวกุลสตรีเซร่า\n"
-            "🔹 `!weather` : เช็คอากาศและ PM2.5\n"
-            "🔹 `!myname [ชื่อ]` : ให้เซร่าจดจำชื่อเล่นคุณ\n"
-            "🔹 `!relationship` : เช็คค่าความสัมพันธ์ (แย่/เฉย/ดี/ดีเยี่ยม)\n"
-            "🔹 `!join` : เชิญเซร่าเข้าสายสนทนา\n"
-            "🔹 `!music` : เลือกเล่นเพลงจากไฟล์ของเซร่า 🎵\n"
-            "🔹 `!draw [ข้อความ]` : สั่งเซร่าวาดรูป\n\n"
-            "**💖 สถานะพิเศษของท่านน้ำมนต์**\n"
-            "เซร่าจะคลั่งรักท่านคนเดียว และคำสั่งลับ (Clear/Test) จะไม่ปรากฏที่นี่ค่ะ 💢"
-        )
-        embed.set_footer(text="เซร่าพร้อมดูแลท่านน้ำมนต์แล้วค่ะ 💙")
-        await channel.send("🔔 **อัปเดตเพลงและระบบหัวใจดิจิทัลเสร็จสิ้นแล้วค่ะ!**", embed=embed)
+@bot.command()
+async def clear(ctx, amount: int = 100):
+    if ctx.author.id == OWNER_ID:
+        await ctx.channel.purge(limit=amount + 1)
+        await ctx.send("*กวาดทำความสะอาด*\n\nเรียบร้อยแล้วค่ะท่านน้ำมนต์ 🧹✨", delete_after=3)
 
-# --- (on_ready และ on_message ใช้ส่วนเดิมจากข้อความที่แล้ว) ---
+# --- ระบบจัดการอัปเดตและส่งรายงาน ---
 @bot.event
 async def on_ready():
-    print(f'Sera Music System Online for ID: {OWNER_ID}')
-    if not wake_up_call.is_running(): wake_up_call.start()
-    await send_update_report()
+    print(f'Sera Elegance Online for ID: {OWNER_ID}')
+    if not wake_up_call.is_running():
+        wake_up_call.start()
+    
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel:
+        embed = discord.Embed(title="🔔 อัปเดตเพลงและระบบความสัมพันธ์เสร็จสิ้น", color=0x3498db)
+        embed.description = (
+            "**👤 ข้อมูลผู้สร้าง**\nท่านน้ำมนต์ (nummonrapeewit@gmail.com)\n\n"
+            "**📜 รายการคำสั่ง (Public)**\n"
+            "🔹 `!weather` : เช็คอากาศ/ฝุ่น\n"
+            "🔹 `!myname [ชื่อ]` : ให้เซร่าจดจำชื่อเล่น (ผูก ID)\n"
+            "🔹 `!relationship` : เช็คระดับใจ (แย่/เฉย/ดี/ดีเยี่ยม)\n"
+            "🔹 `!join` : เชิญเซร่าเข้าสายเสียง\n"
+            "🔹 `!music` : เลือกเพลงจากไฟล์มาฟัง 🎵\n"
+            "🔹 `!draw [ข้อความ]` : สั่งวาดรูป\n"
+        )
+        await channel.send("✨ **เซร่าอัปเดตระบบเสร็จแล้วค่ะ!**", embed=embed)
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
-    # ... (ส่วนกันสแปมและ AI Response จากโค้ดก่อนหน้า) ...
+    # (ใส่ระบบวิเคราะห์ความสัมพันธ์และ AI Response ที่นี่)
     await bot.process_commands(message)
 
-# --- (Loop ปลุก 06:00 น. และระบบความสัมพันธ์ใส่กลับเข้าไปตามโค้ดก่อนหน้า) ---
 bot.run(DISCORD_TOKEN)
