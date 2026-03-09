@@ -10,7 +10,7 @@ from groq import Groq
 from discord.ext import commands, tasks
 
 # --- 🔒 ข้อมูลความปลอดภัยและตั้งค่า ---
-OWNER_ID = 841691286125019186 
+OWNER_ID = 841691286125019186
 LOG_CHANNEL_ID = 1299667544814391349 
 MUSIC_PATH = "./music"
 
