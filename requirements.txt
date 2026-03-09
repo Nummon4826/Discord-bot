@@ -1,4 +1,5 @@
-discord.py
+discord.py[voice]
 groq
-pytz
 requests
+pytz
+PyNaCl
