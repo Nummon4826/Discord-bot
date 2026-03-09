@@ -16,12 +16,15 @@ WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 TIMEZONE = pytz.timezone('Asia/Bangkok')
 
-# ระบบไฟล์ข้อมูล
+# ข้อมูลประจำตัวท่านน้ำมนต์
+OWNER_FULL_NAME = "Nummon Rapeewit#2579" 
+
+# ระบบจัดการไฟล์ข้อมูล
 DATA_FILES = {
-    "names": "names.json", 
     "status": "status.json", 
     "notes": "notes.json", 
-    "affinity": "affinity.json"
+    "affinity": "affinity.json",
+    "user_names": "user_names.json"
 }
 
 for f in DATA_FILES.values():
@@ -36,167 +39,171 @@ def load_data(key):
 def save_data(key, data):
     with open(DATA_FILES[key], "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
-BAD_WORDS = ["ควย", "เย็ด", "สัด", "เหี้ย", "มึง", "กู", "ดอกทอง", "ชิบหาย"]
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- ฟังก์ชันอากาศ ---
-def get_detailed_weather(city="Bangkok"):
-    try:
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city},TH&appid={WEATHER_KEY}&units=metric&lang=th"
-        res = requests.get(url).json()
-        temp = res['main']['temp']
-        return f"📍 {res['name']} | 🌡️ {temp}°C\nดูแลสุขภาพด้วยนะคะ! ฉันไม่ได้ห่วงหรอกนะ แค่ไม่อยากให้ใครป่วยแถวนี้! 💢"
-    except: return "เช็คไม่ได้ค่ะ! 💢"
+# --- ตารางคำอวยพรพิเศษ (พ.ศ. 2569) ---
+SPECIAL_DATES = {
+    "20260314": "สอบ A-Level วันแรก! 💢 สู้ๆ นะคะท่านน้ำมนต์ เซร่าส่งพลังให้แล้ว!",
+    "20260315": "A-Level วันที่สอง... เหนื่อยไหมคะ? กลับมาเซร่านวดให้นะ! 💙",
+    "20260316": "วันสุดท้ายของ A-Level! ปลดปล่อยพลังออกมาให้หมดเลยค่ะ!",
+    "20260321": "สอบตรงพระจอมเกล้าพระนครเหนือ! ⚙️ ต้องไปให้ทัน 07:00 น. สู้ๆ ค่ะ!"
+}
 
-# --- ระบบคุมสแปม/คำหยาบ ---
-message_logs = {}
-spam_warnings = {}
+# --- ระบบกันสแปม ---
+user_last_msg_time = {}
+user_spam_count = {}
 
-async def safety_check(message):
-    if message.author.name == "nummonrapeewit": return True
-    content = message.content.lower()
-    if any(word in content for word in BAD_WORDS):
-        await message.delete()
-        await message.channel.send(f"💢 {message.author.mention} อย่ามาใช้คำหยาบคายนะ! *ตบปาก*")
-        return False
+async def anti_spam_check(message):
+    if f"{message.author.name}#{message.author.discriminator}" == OWNER_FULL_NAME:
+        return True
     uid = message.author.id
     now = time.time()
-    if uid not in message_logs: message_logs[uid] = []
-    message_logs[uid].append(now)
-    message_logs[uid] = [t for t in message_logs[uid] if now - t < 5]
-    if len(message_logs[uid]) >= 5:
-        message_logs[uid] = []
-        spam_warnings[uid] = spam_warnings.get(uid, 0) + 1
-        if spam_warnings[uid] >= 3:
-            await message.guild.ban(message.author, reason="สแปมครบ 3 ครั้ง", delete_message_days=1)
-            await message.channel.send(f"🚫 แบน {message.author.name} 7 วันเรียบร้อย! 💢")
-            spam_warnings[uid] = 0
-        else:
-            await message.channel.send(f"💢 หยุดสแปม! (เตือน {spam_warnings[uid]}/3)")
+    if uid in user_last_msg_time and now - user_last_msg_time[uid] < 1.0:
+        user_spam_count[uid] = user_spam_count.get(uid, 0) + 1
+        if user_spam_count[uid] >= 5:
+            try:
+                await message.author.send("💢 สแปมจนได้นะ! แบน 7 วันค่ะ!")
+                await message.guild.ban(message.author, reason="Spamming", delete_message_days=1)
+            except: pass
+            return False
+        await message.channel.send(f"💢 {message.author.mention} หยุดสแปม! (เตือน {user_spam_count[uid]}/5)", delete_after=2)
         return False
+    user_last_msg_time[uid] = now
+    user_spam_count[uid] = 0
     return True
 
-# --- คำสั่งพื้นฐาน ---
-@bot.command()
-async def whoareyou(ctx):
-    embed = discord.Embed(title="💖 เซร่า (Sera) AI ผู้ภักดีต่อนายท่านน้ำมนต์", color=0xff69b4)
-    embed.description = "ฉันคือ AI อัจฉริยะที่จะดูแลทุกอย่างให้นายท่านน้ำมนต์ค่ะ! 💢"
-    embed.add_field(name="🛡️ การป้องกัน", value="• ลบคำหยาบ 💢 / กันสแปม (แบน 7 วัน)", inline=False)
-    embed.add_field(name="✉️ ฝากข้อความลับ", value="• DM หาฉัน: `ฝากถึง [ไอดีผู้รับ] [ข้อความ]`", inline=False)
-    embed.add_field(name="📈 ความสัมพันธ์", value="ยิ่งคุยกับฉันบ่อยๆ ฉันอาจจะเปิดใจให้นิดหน่อยนะ! 💢", inline=False)
-    await ctx.reply(embed=embed)
+# --- ฟังก์ชันรายงานอากาศ ---
+def get_morning_report():
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/weather?q=Bangkok,TH&appid={WEATHER_KEY}&units=metric&lang=th"
+        res = requests.get(url).json()
+        p_res = requests.get(f"http://api.openweathermap.org/data/2.5/air_pollution?lat={res['coord']['lat']}&lon={res['coord']['lon']}&appid={WEATHER_KEY}").json()
+        pm25 = p_res['list'][0]['components']['pm2_5']
+        safety = "😷 ฝุ่นอันตราย! ใส่แมสก์ด้วยนะ" if pm25 > 37.5 else "✨ อากาศดีค่ะ"
+        return f"📍 กทม. | 🌡️ {res['main']['temp_min']}-{res['main']['temp_max']}°C | 💨 PM2.5: {pm25} | {safety}"
+    except: return "เช็คอากาศไม่ได้ แต่เซร่ามาปลุกแล้วค่ะ! 💢"
 
-@bot.command(name="อากาศ")
-async def weather_cmd(ctx, *, province="Bangkok"):
-    await ctx.reply(get_detailed_weather(province))
+# --- คำสั่งระบบ ---
+@bot.command()
+async def test(ctx):
+    if f"{ctx.author.name}#{ctx.author.discriminator}" != OWNER_FULL_NAME:
+        return await ctx.reply("💢 ท่านน้ำมนต์สั่งได้คนเดียวค่ะ!")
+    
+    msg = await ctx.reply("🔍 กำลังตรวจสอบระบบ...")
+    res = []
+    try:
+        client.chat.completions.create(messages=[{"role":"user","content":"hi"}], model="llama-3.3-70b-versatile", max_tokens=5)
+        res.append("✅ AI Chat: ปกติ")
+    except: res.append("❌ AI Chat: บัค")
+    
+    try:
+        requests.get(f"http://api.openweathermap.org/data/2.5/weather?q=Bangkok&appid={WEATHER_KEY}")
+        res.append("✅ Weather API: ปกติ")
+    except: res.append("❌ Weather API: บัค")
+    
+    await msg.edit(content="ตรวจเสร็จแล้วค่ะ! 💢", embed=discord.Embed(title="Sera Health Check", description="\n".join(res), color=0x3498db))
+
+@bot.command()
+async def clear(ctx, amount: int = 100):
+    if f"{ctx.author.name}#{ctx.author.discriminator}" == OWNER_FULL_NAME:
+        await ctx.channel.purge(limit=amount + 1)
+        await ctx.send("🧹 สะอาดกริ๊บแล้วค่ะท่านน้ำมนต์! 💢", delete_after=3)
+    else: await ctx.reply("💢 อย่ามาสั่งฉัน!")
 
 @bot.command()
 async def draw(ctx, *, prompt):
-    url = f"https://pollinations.ai/p/{prompt.replace(' ', '_')}?width=1024&height=1024&seed={time.time()}"
+    url = f"https://pollinations.ai/p/{requests.utils.quote(prompt)}?width=1024&height=1024&seed={time.time()}"
     await ctx.reply(embed=discord.Embed(title="วาดให้แล้วค่ะ! 🎨").set_image(url=url))
+
+@bot.command()
+async def myname(ctx, *, name: str):
+    db = load_data("user_names")
+    db[str(ctx.author.id)] = name
+    save_data("user_names", db)
+    await ctx.reply(f"จำชื่อคุณ '{name}' ไว้แล้วค่ะ! 💢")
+
+@bot.command()
+async def tell(ctx, discriminator: str, *, content):
+    notes = load_data("notes")
+    if discriminator not in notes: notes[discriminator] = []
+    notes[discriminator].append({"from": ctx.author.display_name, "msg": content})
+    save_data("notes", notes)
+    await ctx.reply(f"ฝากข้อความถึง #{discriminator} เรียบร้อย! 💢")
+
+# --- Loop ปลุก 06:00 น. ---
+@tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
+async def wake_up_call():
+    now_str = datetime.datetime.now(TIMEZONE).strftime("%Y%m%d")
+    report = get_morning_report()
+    special = f"\n✨ {SPECIAL_DATES[now_str]}" if now_str in SPECIAL_DATES else ""
+    member = discord.utils.get(bot.get_all_members(), name="Nummon Rapeewit", discriminator="2579")
+    if member:
+        try:
+            dm = await member.create_dm()
+            await dm.send(f"☀️ **ตื่นค่ะท่านน้ำมนต์!**\n{report}{special}\nเซร่ารออยู่นะคะ! 💙💢")
+        except: pass
 
 @bot.event
 async def on_ready():
-    print(f'Sera is online as {bot.user.name}')
+    print(f'Sera Online for {OWNER_FULL_NAME}')
+    if not wake_up_call.is_running(): wake_up_call.start()
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
-    is_owner = (message.author.name == "nummonrapeewit")
+    if not await anti_spam_check(message): return
+
+    author_tag = f"{message.author.name}#{message.author.discriminator}"
+    is_owner = (author_tag == OWNER_FULL_NAME)
     uid = str(message.author.id)
 
-    # --- 1. ระบบจัดการสถานะนายท่าน (DM) ---
+    # 1. ระบบ DM (จัดการสถานะ)
     if isinstance(message.channel, discord.DMChannel) and is_owner:
-        content = message.content.strip()
-        if not content.startswith("ฝากถึง"):
-            status_db = load_data("status")
-            if "มาแล้ว" in content or "กลับมา" in content:
-                status_db["current"] = "home"
-                save_data("status", status_db)
-                await message.reply("**กะ...กลับมาแล้วเหรอคะ!?** 💙 *สะดุ้งแล้วหน้าแดงแปร๊ด* ไม่ได้รออยู่หรอกนะ! แต่ยินดีต้อนรับกลับนะคะ! 💢")
-            else:
-                status_text = content.replace("ผมไป", "").replace("นะ", "").strip()
-                status_db["current"] = status_text
-                save_data("status", status_db)
-                await message.reply(f"**OK เลยค่ะนายท่านน้ำมนต์!** 💙 เดี๋ยวเซร่าจะบอกทุกคนให้เองค่ะว่านายท่านไป '{status_text}' รีบกลับมานะคะ! 💢")
-            return
+        db = load_data("status")
+        if any(x in message.content for x in ["มาแล้ว", "กลับมา"]):
+            db["current"] = "home"
+            await message.reply("**กลับมาแล้วเหรอคะ!?** 💙 ยินดีต้อนรับกลับค่ะ! 💢")
+        else:
+            status = message.content.replace("ผมไป", "").replace("นะ", "").strip()
+            db["current"] = status
+            await message.reply(f"**OK ค่ะท่านน้ำมนต์!** เดี๋ยวเซร่าบอกคนอื่นให้นะคะ 💢💙")
+        save_data("status", db)
+        return
 
-    # --- 2. ระบบฝากข้อความลับ (DM) ---
-    if isinstance(message.channel, discord.DMChannel) and message.content.startswith("ฝากถึง"):
+    # 2. ระบบตอบโต้อัจฉริยะ & แจ้งเตือน
+    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel) or "นายท่าน" in message.content:
+        s_db, a_db, n_db = load_data("status"), load_data("affinity"), load_data("user_names")
+        name = n_db.get(uid, message.author.display_name)
+        
+        if not is_owner:
+            aff = a_db.get(uid, 0) + 1
+            a_db[uid] = aff
+            save_data("affinity", a_db)
+            
+            # แจ้งเตือนนายท่านเมื่อมีคนเรียกตอนอยู่บ้าน
+            if s_db.get("current") == "home" and ("นายท่าน" in message.content or "น้ำมนต์" in message.content):
+                await message.reply(f"คุณ {name} คะ นายท่านกลับมาแล้ว เดี๋ยวเซร่าตามให้ค่ะ! 💢")
+                owner = discord.utils.get(bot.get_all_members(), name="Nummon Rapeewit", discriminator="2579")
+                if owner: await owner.send(f"💙 ท่านน้ำมนต์คะ! {name} เรียกหาท่านค่ะ: '{message.content}'")
+                return
+
+        mood = "คลั่งรัก หน้าแดง" if is_owner else "ซึนเดเระ" if a_db.get(uid, 0) > 50 else "เย็นชา"
+        sys_rules = f"คุณคือ 'เซร่า' สาวซึนเดเระผู้ภักดีต่อ {OWNER_FULL_NAME}. ท่านน้ำมนต์: คลั่งรัก. คนอื่น ({name}): {mood}. ตอบด้วยอริยาบทใน * * และอีโมจิ 💢"
         try:
-            parts = message.content.split(" ", 2)
-            notes = load_data("notes")
-            if parts[1] not in notes: notes[parts[1]] = []
-            notes[parts[1]].append({"msg": parts[2]})
-            save_data("notes", notes)
-            await message.reply("รับเรื่องไว้แล้วค่ะ! 💢")
-            return
-        except: pass
+            chat = client.chat.completions.create(messages=[{"role":"system","content":sys_rules},{"role":"user","content":message.content}], model="llama-3.3-70b-versatile")
+            await message.reply(chat.choices[0].message.content)
+        except: await message.reply("ระบบรวนค่ะท่านน้ำมนต์! 💢")
 
-    # --- 3. Safety Check (Server) ---
-    if not isinstance(message.channel, discord.DMChannel):
-        if not await safety_check(message): return
+    # 3. ระบบฝากข้อความ
+    notes = load_data("notes")
+    disc = message.author.discriminator
+    if disc in notes and notes[disc]:
+        for n in notes[disc]: await message.channel.send(f"🔔 #{disc} มีข้อความฝาก: '{n['msg']}' (จาก {n['from']}) 💢")
+        notes[disc] = []; save_data("notes", notes)
 
     await bot.process_commands(message)
-
-    # --- 4. ส่งข้อความฝาก ---
-    notes = load_data("notes")
-    if uid in notes and notes[uid]:
-        for n in notes[uid]:
-            try:
-                dm = await message.author.create_dm()
-                await dm.send(f"🔔 มีข้อความฝากถึงคุณค่ะ: '{n['msg']}' 💢")
-            except: pass
-        notes[uid] = []
-        save_data("notes", notes)
-
-    # --- 5. AI Chat & Affinity & Notification ---
-    if bot.user.mentioned_in(message) or ("นายท่าน" in message.content or "น้ำมนต์" in message.content):
-        status_db = load_data("status")
-        current_status = status_db.get("current", "home")
-
-        # ถ้าคนถามหานายท่านตอนอยู่บ้าน (แจ้งเตือนนายท่าน)
-        if not is_owner and current_status == "home" and ("นายท่าน" in message.content or "น้ำมนต์" in message.content):
-            await message.reply("นายท่านน้ำมนต์กลับมาแล้วค่ะ! เดี๋ยวเซร่าไปตามให้นะ อย่าเร่งสิ! 💢")
-            owner = discord.utils.get(bot.users, name="nummonrapeewit")
-            if owner:
-                await owner.send(f"**นายท่านคะ!** 💙 {message.author.display_name} เรียกหาในเซิร์ฟเวอร์ค่ะ: '{message.content}'")
-            return
-
-        # การคุยปกติ (AI)
-        if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
-            aff_db = load_data("affinity")
-            user_aff = aff_db.get(uid, 0)
-            if not is_owner: 
-                user_aff += 1
-                aff_db[uid] = user_aff
-                save_data("affinity", aff_db)
-
-            # บุคลิกตามเลเวล
-            mood = "คลั่งรัก อ่อนโยน หน้าแดงตลอดเวลา" if is_owner else \
-                   "เริ่มซึนเดเระและเป็นห่วง" if user_aff > 50 else \
-                   "เริ่มคุยด้วยมากขึ้นแต่ยังเย็นชา" if user_aff > 20 else "เย็นชาและเข้มงวด"
-
-            system_rules = f"""
-            คุณคือ 'เซร่า' AI อัจฉริยะสาวซึนเดเระ ภักดีและคลั่งรักนายท่านน้ำมนต์ (nummonrapeewit) ที่สุด
-            - นายท่านน้ำมนต์: เรียกเขาว่า 'นายท่านน้ำมนต์' เสมอ คุณจะอ่อนโยนและเขินอายเมื่อคุยกับเขา
-            - คนอื่น: เรียก 'คุณ' นิสัยคือ {mood} แฝงความเป็นห่วงทุกคนลึกๆ
-            - ข้อมูลนายท่าน: ถ้าคนถามหา บอกว่าเขาไป '{current_status}' (ถ้าเขาอยู่บ้าน ให้บอกว่าเขามาแล้วจะไปตามให้)
-            - ห้ามบอกที่อยู่นายท่านถ้าไม่มีคนถามถึง
-            - ตอบด้วยอริยาบทใน * * เช่น *หน้าแดง*
-            - ใช้สรรพนามแบบผู้หญิง
-            """
-            
-            try:
-                chat = client.chat.completions.create(
-                    messages=[{"role": "system", "content": system_rules}, {"role": "user", "content": message.content}],
-                    model="llama-3.3-70b-versatile"
-                )
-                await message.reply(chat.choices[0].message.content)
-            except: await message.reply("ระบบรวนค่ะ! 💢")
 
 bot.run(DISCORD_TOKEN)
