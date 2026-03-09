@@ -95,7 +95,7 @@ async def check_spam(message):
 # --- 4. แจ้งเตือน 06:00 น. ---
 @tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
 async def morning_alert():
-    CHANNEL_ID = 123456789012345678 # <<< เปลี่ยน ID ห้องตรงนี้ครับ!
+    CHANNEL_ID =  1299667544814391349# <<< เปลี่ยน ID ห้องตรงนี้ครับ!
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         info = get_detailed_weather("Bangkok")
