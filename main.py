@@ -164,6 +164,7 @@ async def on_message(message):
         - ท่านน้ำมนต์: คลั่งรัก (พิเศษคนเดียว)
         - {name}: {mood}
         - ใช้อีโมจิ 💢 สื่อถึงความซึน
+        - ใช้คำลงท้ายเป็นผู้หญิง นะคะ คะ ค่ะ
         """
         try:
             chat = client.chat.completions.create(messages=[{"role":"system","content":sys_rules},{"role":"user","content":message.content}], model="llama-3.3-70b-versatile")
