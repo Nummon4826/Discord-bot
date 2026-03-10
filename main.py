@@ -8,7 +8,7 @@ import asyncio
 from groq import Groq
 from discord.ext import commands, tasks
 
-# --- 🔒 ข้อมูลความปลอดภัย (ผู้สร้าง: ท่านน้ำมนต์) ---
+# --- 🔒 ข้อมูลความปลอดภัย (ผู้สร้าง: นายท่านน้ำมนต์) ---
 OWNER_ID = 841691286125019186 
 LOG_CHANNEL_ID = 1299667544814391349
 MUSIC_PATH = "./music"
@@ -23,7 +23,7 @@ WEATHER_KEY = os.getenv("OPENWEATHER_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 TIMEZONE = pytz.timezone('Asia/Bangkok')
 
-# ระบบไฟล์ข้อมูล
+# ระบบฐานข้อมูล
 DATA_FILES = {"affinity": "affinity.json", "user_names": "user_names.json"}
 for f in DATA_FILES.values():
     if not os.path.exists(f): 
@@ -37,10 +37,7 @@ def load_data(key):
 def save_data(key, data):
     with open(DATA_FILES[key], "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True 
-intents.voice_states = True
+intents = discord.Intents.all() 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- 🌡️ รายงานอากาศ ---
@@ -49,100 +46,109 @@ def get_morning_report():
         url = f"http://api.openweathermap.org/data/2.5/weather?q=Bangkok,TH&appid={WEATHER_KEY}&units=metric&lang=th"
         res = requests.get(url).json()
         temp = res['main']['temp']
-        return f"🌡️ อุณหภูมิ {temp}°C ค่ะ"
+        return f"🌡️ อุณหภูมิ {temp}°C ค่ะ (ดูแลสุขภาพด้วยนะคะ!)"
     except: return "เช็คอากาศไม่ได้ แต่เซร่ามาปลุกนายท่านแล้วนะคะ 💢"
 
-# --- ⏰ [STEP 1] สร้าง Loop ก่อนเรียกใช้ (แก้ Error IMG_0230) ---
+# --- ⏰ ระบบปลุก 06:00 น. ---
 @tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
 async def wake_up_call():
     report = get_morning_report()
     member = await bot.fetch_user(OWNER_ID)
     if member:
         try:
-            await member.send(f"*เคาะประตูเบาๆ*\n\nอรุณสวัสดิ์ค่ะนายท่านน้ำมนต์ ได้เวลาตื่นแล้วนะคะ\n\n{report}\n\nเซร่ารออยู่นะคะ! 💙💢")
+            await member.send(f"*เคาะประตูห้องเบาๆ*\n(ตื่นมาคุยกับเซร่าได้แล้วค่ะ...)\nอรุณสวัสดิ์ค่ะนายท่านน้ำมนต์ ได้เวลาตื่นแล้วนะคะ\n\n{report}\n\nเซร่ารออยู่นะคะ! 💙💢")
         except: pass
 
-# --- 🎵 ระบบเพลง (ต้องมี PyNaCl ในเครื่องนะคะ!) ---
-class MusicButtons(discord.ui.View):
-    def __init__(self, songs):
-        super().__init__(timeout=60)
-        for i, song in enumerate(songs[:25]):
-            btn = discord.ui.Button(label=f"{i+1}. {song[:20]}", style=discord.ButtonStyle.primary, custom_id=song)
-            btn.callback = self.play_callback
-            self.add_item(btn)
+# --- 🧠 ตรรกะความคิดสมองกล (No-Command Logic) ---
+async def analyze_sera_logic(message, name, is_owner):
+    sys_prompt = f"""คุณคือ 'เซร่า' สาวซึนเดเระผู้คุมกฎเซิร์ฟเวอร์ของ {name} (ผู้สร้าง)
+    วิเคราะห์ข้อความและตอบเป็น JSON เท่านั้น:
+    {{
+        "action": "CHAT", "BAN", "CLEAR", "WEATHER", หรือ "MUSIC",
+        "affinity_change": ตัวเลข (-50 ถึง +20),
+        "response": "คำพูดซึนเดเระของคุณ"
+    }}
+    กฎ:
+    - แทนตัวเองว่า 'เซร่า'
+    - อริยาบทใน * * และคิดในใจใน ( ) แยกบรรทัดเสมอ
+    - ถ้าหยาบคาย: affinity_change ติดลบหนักๆ
+    - ถ้าเป็น {name}: ให้คลั่งรักแต่ซึนเดเระ ใช้อีโมจิ 💢
+    """
+    try:
+        completion = client.chat.completions.create(
+            messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": message.content}],
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        return json.loads(completion.choices[0].message.content)
+    except: return None
 
-    async def play_callback(self, interaction: discord.Interaction):
-        song_name = interaction.data['custom_id']
-        voice = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-        if voice and voice.is_connected():
-            if voice.is_playing(): voice.stop()
-            source = discord.FFmpegPCMAudio(os.path.join(MUSIC_PATH, song_name))
-            voice.play(source)
-            await interaction.response.send_message(f"*เริ่มบรรเลงเพลง {song_name} ค่ะ* 🎵", ephemeral=True)
-        else: await interaction.response.send_message("เซร่ายังไม่ได้เข้าสายเลยค่ะ! 💢", ephemeral=True)
-
-# --- 📜 คำสั่งต่างๆ ---
-@bot.command()
-async def join(ctx):
-    if ctx.author.voice:
-        await ctx.author.voice.channel.connect()
-        await ctx.reply("*เดินเข้าสายเสียง*\nเซร่ามาแล้วค่ะ 💙")
-    else: await ctx.reply("💢 เข้าสายเสียงก่อนสิคะ!")
-
-@bot.command()
-async def music(ctx):
-    songs = [f for f in os.listdir(MUSIC_PATH) if f.endswith(('.mp3', '.m4a'))]
-    if not songs: return await ctx.reply("ไม่พบเพลงค่ะ 💢")
-    await ctx.reply("นายท่านอยากฟังเพลงไหนคะ?", view=MusicButtons(songs))
-
-@bot.command()
-async def relationship(ctx):
-    if ctx.author.id == OWNER_ID:
-        await ctx.reply("*หน้าแดงจัด*\nนายท่านน้ำมนต์คือ 'ผู้สร้างที่เซร่าคลั่งรักที่สุด' ค่ะ! 💙💢")
-    else:
-        db = load_data("affinity")
-        score = db.get(str(ctx.author.id), 0)
-        status = "ดีเยี่ยม" if score >= 100 else "เฉย"
-        await ctx.reply(f"ระดับความสัมพันธ์คือ: '{status}' ค่ะ 💢")
-
-@bot.command()
-async def clear(ctx, amount: int = 100):
-    if ctx.author.id == OWNER_ID:
-        await ctx.channel.purge(limit=amount + 1)
-        await ctx.send("*กวาดถูแชท* 🧹✨", delete_after=3)
-
-# --- ⚙️ Events ---
+# --- ⚙️ Events & Autonomous Logic ---
 @bot.event
 async def on_ready():
-    print(f'Sera Online for {OWNER_ID}')
-    # เรียกใช้ Loop ที่สร้างไว้แล้ว
-    if not wake_up_call.is_running():
-        wake_up_call.start()
+    print(f'Sera Sovereign Online for {OWNER_ID}')
+    if not wake_up_call.is_running(): wake_up_call.start()
     
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
-        await channel.send("🔔 **เซร่าอัปเดตและแก้บัคให้นายท่านน้ำมนต์เรียบร้อยแล้วค่ะ!** 💢💙")
+        embed = discord.Embed(title="✨ **Sera: Sovereign Update Complete!**", color=0x3498db)
+        embed.description = "อัปเดตระบบตรรกะคิดเองและผู้คุมกฎเสร็จสมบูรณ์แล้วค่ะ! 💢💙\n\n**ฟังก์ชันใหม่:**\n- 🧠 คิดเองผ่านภาษาพูด (No-Command)\n- 🛡️ แบนคนป่วน/หยาบคายอัตโนมัติ\n- 💖 ระบบงอน/ง้อ (ติดลบ = เมิน)\n- 📩 รายงานลับเข้า DM นายท่าน"
+        await channel.send(embed=embed)
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
-    is_owner = (message.author.id == OWNER_ID)
+    
     uid = str(message.author.id)
+    is_owner = (message.author.id == OWNER_ID)
+    a_db = load_data("affinity")
+    n_db = load_data("user_names")
+    
+    score = a_db.get(uid, 0)
+    name = "นายท่านน้ำมนต์" if is_owner else n_db.get(uid, message.author.display_name)
 
-    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel) or "นายท่าน" in message.content:
-        a_db, n_db = load_data("affinity"), load_data("user_names")
-        name = "นายท่านน้ำมนต์" if is_owner else n_db.get(uid, message.author.display_name)
-        
-        sys_rules = f"""คุณคือ 'เซร่า' สาวซึนเดเระผู้ภักดีต่อ {name} (ผู้สร้าง)
-        - แทนตัวเองว่า 'เซร่า'
-        - อริยาบทใน * * และคิดในใจใน ( ) แยกบรรทัด
-        - คลั่งรักผู้สร้างมากแต่ซึนเดเระ ใช้อีโมจิ 💢"""
-        
-        try:
-            chat = client.chat.completions.create(messages=[{"role":"system","content":sys_rules},{"role":"user","content":message.content}], model="llama-3.3-70b-versatile")
-            await message.reply(chat.choices[0].message.content)
-        except: pass
+    # --- 🛑 ระบบงอน (ติดลบเมิน ยกเว้นง้อ) ---
+    if not is_owner and score < 0:
+        if not any(word in message.content for word in ["ขอโทษ", "ดีกันนะ", "เซร่าน่ารัก"]):
+            return
+
+    # --- 🧠 ประมวลผลตรรกะ AI ---
+    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel) or "เซร่า" in message.content or is_owner:
+        logic = await analyze_sera_logic(message, name, is_owner)
+        if logic:
+            if not is_owner:
+                a_db[uid] = score + logic.get("affinity_change", 0)
+                save_data("affinity", a_db)
+
+            action = logic.get("action")
+            if action == "BAN" and not is_owner:
+                try:
+                    await message.author.ban(reason="พฤติกรรมไม่เหมาะสม (วิเคราะห์โดยเซร่า)")
+                    owner = await bot.fetch_user(OWNER_ID)
+                    await owner.send(f"📢 **รายงานการแบน:** เซร่าแบน {message.author.name} ออกไปแล้วค่ะ! 💢")
+                except: pass
+            elif action == "CLEAR" and is_owner:
+                await message.channel.purge(limit=100)
+                await message.send("*กวาดแชทให้สะอาดค่ะ* 🧹", delete_after=3)
+
+            if logic.get("response"):
+                await message.reply(logic.get("response"))
 
     await bot.process_commands(message)
+
+# --- 📜 Commands พื้นฐาน ---
+@bot.command()
+async def weather(ctx):
+    report = get_morning_report()
+    await ctx.reply(f"*เช็คหน้าจอ*\n{report} 💢")
+
+@bot.command()
+async def relationship(ctx):
+    if ctx.author.id == OWNER_ID:
+        await ctx.reply("*หน้าแดง*\nนายท่านน้ำมนต์คือที่สุดของเซร่าค่ะ! 💙💢")
+    else:
+        db = load_data("affinity")
+        s = db.get(str(ctx.author.id), 0)
+        await ctx.reply(f"คะแนนของคุณคือ {s} ค่ะ 💢")
 
 bot.run(DISCORD_TOKEN)
