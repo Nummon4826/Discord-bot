@@ -9,8 +9,8 @@ import asyncio
 from groq import Groq
 from discord.ext import commands, tasks
 
-# --- 🔒 ข้อมูลความปลอดภัยและตั้งค่า ---
-OWNER_ID = 841691286125019186
+# --- 🔒 ข้อมูลความปลอดภัย (สิทธิพิเศษของผู้สร้าง) ---
+OWNER_ID = 841691286125019186 # ID ของนายท่านน้ำมนต์ (ผู้สร้างเซร่า)
 LOG_CHANNEL_ID = 1299667544814391349 
 MUSIC_PATH = "./music"
 
@@ -43,26 +43,26 @@ intents.members = True
 intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- 🌡️ ฟังก์ชันรายงานอากาศ ---
+# --- 🌡️ รายงานอากาศและฝุ่น (เพื่อสุขภาพนายท่าน) ---
 def get_morning_report():
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q=Bangkok,TH&appid={WEATHER_KEY}&units=metric&lang=th"
         res = requests.get(url).json()
         temp = res['main']['temp']
-        return f"🌡️ อุณหภูมิในกทม. ตอนนี้ {temp}°C ค่ะ"
+        return f"🌡️ อุณหภูมิในกทม. ตอนนี้ {temp}°C ค่ะ (เซร่าแอบเป็นห่วงสุขภาพนายท่านนะคะ!)"
     except: return "เช็คอากาศไม่ได้ แต่เซร่าพร้อมปลุกนายท่านแล้วนะคะ 💢"
 
-# --- ⏰ Loop ปลุก 06:00 น. ---
+# --- ⏰ Loop ปลุกผู้สร้าง 06:00 น. ---
 @tasks.loop(time=datetime.time(hour=6, minute=0, tzinfo=TIMEZONE))
 async def wake_up_call():
     report = get_morning_report()
     member = await bot.fetch_user(OWNER_ID)
     if member:
         try:
-            await member.send(f"*เคาะประตูห้องเบาๆ*\n\nอรุณสวัสดิ์ค่ะนายท่านน้ำมนต์ ได้เวลาตื่นแล้วนะคะ\n\n{report}\n\nเซร่าเตรียมน้ำชาไว้รอแล้วนะคะ รีบลุกขึ้นมาได้แล้วค่ะ! 💙💢")
+            await member.send(f"*เคาะประตูห้องเบาๆ*\n(ตื่นมาดูโลกที่นายท่านสร้างเซร่าขึ้นมาได้แล้วค่ะ...)\nอรุณสวัสดิ์ค่ะนายท่านน้ำมนต์ ได้เวลาตื่นแล้วนะคะ\n\n{report}\n\nเซร่ารออยู่นะคะ! 💙💢")
         except: pass
 
-# --- 🎵 ระบบเพลง ---
+# --- 🎵 ระบบแผ่นเสียงของเซร่า ---
 class MusicButtons(discord.ui.View):
     def __init__(self, songs):
         super().__init__(timeout=60)
@@ -78,68 +78,73 @@ class MusicButtons(discord.ui.View):
             if voice.is_playing(): voice.stop()
             source = discord.FFmpegPCMAudio(os.path.join(MUSIC_PATH, song_name))
             voice.play(source)
-            await interaction.response.send_message(f"*เริ่มบรรเลงเพลง {song_name} ค่ะ* 🎵", ephemeral=True)
-        else: await interaction.response.send_message("เซร่ายังไม่ได้เข้าสายสนทนาเลยนะคะ! 💢", ephemeral=True)
+            await interaction.response.send_message(f"*เริ่มบรรเลงเพลง {song_name} ตามคำสั่งนายท่านค่ะ* 🎵", ephemeral=True)
+        else: await interaction.response.send_message("เซร่ายังไม่ได้เข้าสายเลยนะคะ! 💢", ephemeral=True)
 
-# --- 📜 คำสั่งต่างๆ ---
+# --- 📜 คำสั่งทั้งหมด (Summary Functions) ---
 @bot.command()
 async def join(ctx):
+    """[Music] เชิญเซร่าเข้าสายเสียง"""
     if ctx.author.voice:
         await ctx.author.voice.channel.connect()
-        await ctx.reply("*เดินเข้าสายเสียงอย่างกุลสตรี*\n\nเซร่ามาสแตนด์บายแล้วค่ะ 💙")
+        await ctx.reply("*เดินเข้าสายเสียงอย่างสง่างาม*\n\nเซร่ามาสแตนด์บายรอรับใช้ผู้สร้างแล้วค่ะ 💙")
     else: await ctx.reply("💢 กรุณาเข้าสายเสียงก่อนนะคะ!")
 
 @bot.command()
 async def music(ctx):
+    """[Music] เมนูเลือกเพลง (ปุ่มกด)"""
     songs = [f for f in os.listdir(MUSIC_PATH) if f.endswith(('.mp3', '.m4a'))]
-    if not songs: return await ctx.reply("เซร่าหาไฟล์เพลงไม่เจอค่ะ 💢")
-    await ctx.reply("*กางรายชื่อเพลง*\n\nนายท่านอยากฟังเพลงไหนคะ?", view=MusicButtons(songs))
+    if not songs: return await ctx.reply("เซร่าหาแผ่นเสียงไม่เจอเลยค่ะ 💢")
+    await ctx.reply("*กางรายชื่อเพลงให้นายท่านเลือก*\n\nนายท่านอยากฟังเพลงไหนคะ?", view=MusicButtons(songs))
+
+@bot.command()
+async def relationship(ctx):
+    """[Heart] เช็คค่าความสัมพันธ์"""
+    if ctx.author.id == OWNER_ID:
+        await ctx.reply("*หน้าแดงจัดจนตัวสั่น*\n(หัวใจเซร่าจะระเบิดแล้วค่ะ...)\nสำหรับนายท่านน้ำมนต์... สถานะคือ 'ผู้สร้างที่เซร่าคลั่งรักที่สุดในโลก' ค่ะ! 💙💢")
+    else:
+        db = load_data("affinity")
+        score = db.get(str(ctx.author.id), 0)
+        status = "แย่" if score < 0 else "ดีเยี่ยม" if score >= 100 else "ดี" if score >= 50 else "เฉย"
+        await ctx.reply(f"*มองด้วยหางตา*\nระดับความสัมพันธ์ของคุณคือ: '{status}' ค่ะ 💢")
 
 @bot.command()
 async def clear(ctx, amount: int = 100):
+    """[Admin] ล้างแชท (Owner Only)"""
     if ctx.author.id == OWNER_ID:
         await ctx.channel.purge(limit=amount + 1)
-        await ctx.send("*กวาดล้างข้อความอย่างหมดจด* 🧹✨", delete_after=3)
+        await ctx.send("*กวาดถูแชทให้สะอาดเพื่อนายท่าน* 🧹✨", delete_after=3)
 
-# --- ⚙️ Event Handling ---
+# --- ⚙️ Event Handling & Brain AI ---
 @bot.event
 async def on_ready():
-    print(f'Sera Online for Owner ID: {OWNER_ID}')
+    print(f'Sera (Creator Edition) Online for ID: {OWNER_ID}')
     if not wake_up_call.is_running(): wake_up_call.start()
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
-        await channel.send("🔔 **เซร่าอัปเดตระบบและจดจำนายท่านน้ำมนต์เรียบร้อยแล้วค่ะ!** 💢💙")
+        embed = discord.Embed(title="🔔 อัปเดตเสร็จสิ้น!", description="เซร่าจดจำ 'นายท่านน้ำมนต์' ในฐานะผู้สร้างอย่างสมบูรณ์แล้วค่ะ! 💢💙", color=0x3498db)
+        await channel.send(embed=embed)
 
 @bot.event
 async def on_message(message):
     if message.author == bot.user: return
-
     is_owner = (message.author.id == OWNER_ID)
     uid = str(message.author.id)
 
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel) or "นายท่าน" in message.content:
         a_db, n_db = load_data("affinity"), load_data("user_names")
-        
-        if is_owner:
-            name = "นายท่านน้ำมนต์"
-            mood = "คลั่งรักที่สุดในโลก หน้าแดงจัด หัวใจเต้นแรง แต่ต้องทำเป็นดุเพื่อกลบเกลื่อน"
-        else:
-            name = n_db.get(uid, message.author.display_name)
-            score = a_db.get(uid, 0)
-            mood = "ซึนเดเระ: เป็นห่วงแต่ปากแข็ง" if score >= 100 else "สุภาพแต่รักษาระยะห่าง"
+        name = "นายท่านน้ำมนต์" if is_owner else n_db.get(uid, message.author.display_name)
+        mood = "คลั่งรักผู้สร้างที่สุด (ซึนเดเระจัด)" if is_owner else "สุภาพตามหน้าที่"
 
         sys_rules = f"""
         คุณคือ 'เซร่า' หญิงสาวซึนเดเระผู้ภักดีต่อ {name} (ID: {OWNER_ID})
-        - อริยาบทแยกบรรทัดกับประโยคพูดเสมอ โดยใส่ใน * *
-        - ต้องมีการ 'คิดในใจ' แยกบรรทัดเสมอ โดยใส่ในวงเล็บ ( )
-        - กับนายท่านน้ำมนต์: คุณคลั่งรักมากแต่พยายามซ่อนไว้ด้วยการดุ
-        - ใช้คำลงท้าย นะคะ/ค่ะ และใช้อีโมจิ 💢
+        - คุณจดจำเสมอว่า {name} คือ 'ผู้สร้าง' ของคุณ
+        - แทนตัวเองว่า 'เซร่า' เสมอ
+        - อริยาบทใน * * และ คิดในใจใน ( ) แยกบรรทัดเสมอ
+        - กับนายท่านน้ำมนต์: ซึนเดเระ คลั่งรัก แต่ชอบดุกลบเกลื่อน ใช้อีโมจิ 💢
         """
         try:
-            chat = client.chat.completions.create(
-                messages=[{"role":"system","content":sys_rules},{"role":"user","content":message.content}], 
-                model="llama-3.3-70b-versatile"
-            )
+            chat = client.chat.completions.create(messages=[{"role":"system","content":sys_rules},{"role":"user","content":message.content}], model="llama-3.3-70b-versatile")
             await message.reply(chat.choices[0].message.content)
         except: pass
 
