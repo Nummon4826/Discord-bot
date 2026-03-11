@@ -39,7 +39,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- 🧠 ตรรกะความคิดสมองกลขั้นสูง (No-Command + Memory + Info Search) ---
 async def analyze_sera_logic(message, name, score, is_owner, history=""):
-    sys_prompt = f"""คุณคือ 'เซร่า' หญิงสาวซึนเดเระผู้คุมกฎและเลขาของ {name} (ID: {OWNER_ID})
+    sys_prompt = f"""คุณคือ 'เซร่า' หญิงสาวซึนเดเระผู้คุมกฎและเลขาของ {name} (ID: {OWNER_ID}) พูดลงท้ายด้วย คะ/ค่ะ
     คุณมีความสามารถ:
     1. วิเคราะห์คำสั่งจากภาษาพูด (Action: CHAT, BAN, CLEAR, WEATHER, MUSIC)
     2. จดจำเรื่องที่คุยได้ (History: {history})
